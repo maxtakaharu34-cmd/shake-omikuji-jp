@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<meta name="theme-color" content="#1a0030" />
+<title>シェイクおみくじ</title>
+<link href="https://fonts.googleapis.com/css2?family=Mochiy+Pop+P+One&family=Kosugi+Maru&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box}html,body{margin:0;padding:0;height:100%;overflow:hidden}
+body{font-family:"Kosugi Maru",system-ui,sans-serif;color:#fff;background:radial-gradient(800px 500px at 30% 10%,rgba(232,19,58,.45),transparent 70%),radial-gradient(800px 500px at 70% 90%,rgba(255,215,0,.25),transparent 70%),linear-gradient(180deg,#2a0050,#08010f);touch-action:manipulation;user-select:none;-webkit-tap-highlight-color:transparent}
+#app{display:flex;flex-direction:column;height:100dvh;padding:12px;gap:10px;max-width:480px;margin:0 auto;align-items:center;justify-content:space-between}
+.title{font-family:"Mochiy Pop P One",sans-serif;font-size:24px;color:#ffe066;-webkit-text-stroke:3px #000;paint-order:stroke fill;text-shadow:3px 3px 0 #e8133a;margin:8px 0;transform:rotate(-2deg)}
+.intro{text-align:center;font-size:13px;opacity:.85;line-height:1.7}
+.box-wrap{flex:1;display:flex;align-items:center;justify-content:center;width:100%;position:relative}
+.box{width:80%;max-width:280px;aspect-ratio:1;background:linear-gradient(135deg,#7c0a0a,#3a0010);border:4px solid #ffe066;border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;box-shadow:0 0 30px rgba(255,224,102,.3),inset 0 0 30px rgba(0,0,0,.5);position:relative;overflow:hidden}
+.box.shaking{animation:shake .15s linear infinite}
+@keyframes shake{0%,100%{transform:rotate(-2deg) translate(0,0)}25%{transform:rotate(3deg) translate(-3px,2px)}75%{transform:rotate(-3deg) translate(3px,-2px)}}
+.box .icon{font-size:80px;line-height:1;filter:drop-shadow(0 0 8px rgba(255,224,102,.6))}
+.box .hint{font-family:"Mochiy Pop P One",sans-serif;font-size:14px;color:#ffe066;text-align:center;padding:0 12px;line-height:1.5}
+.result{display:none;flex-direction:column;align-items:center;gap:8px;text-align:center;padding:12px}
+.result.show{display:flex}
+.result .rank{font-family:"Mochiy Pop P One",sans-serif;font-size:36px;color:#ffe066;-webkit-text-stroke:3px #000;paint-order:stroke fill;text-shadow:3px 3px 0 #e8133a;line-height:1}
+.result .quote{font-size:11px;line-height:1.5;color:#fff;background:rgba(0,0,0,.3);padding:6px 10px;border-radius:8px;border:1px solid rgba(255,224,102,.3)}
+.actions{display:flex;gap:8px;width:100%;justify-content:center}
+.actions button{background:#ffe066;color:#000;border:3px solid #000;padding:10px 22px;font-family:"Mochiy Pop P One",sans-serif;font-size:14px;border-radius:999px;cursor:pointer;box-shadow:3px 3px 0 #000}
+.actions .share{background:#1da1f2;color:#fff}
+.actions button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #000}
+.note{font-size:9px;opacity:.65;text-align:center}
+.flash{position:fixed;inset:0;background:rgba(255,255,255,0);pointer-events:none;z-index:50;transition:background .1s}
+.flash.fire{background:rgba(255,255,255,.7)}
+</style>
+</head>
+<body>
+<div id="app">
+  <h1 class="title">シェイクおみくじ</h1>
+  <p class="intro">スマホを<b>シェイク！</b><br/>(PCはタップでもOK)</p>
+  <div class="box-wrap">
+    <div class="box" id="box">
+      <div class="icon" id="icon">🎁</div>
+      <div class="hint" id="hint">振って占う！</div>
+      <div class="result" id="result">
+        <div class="rank" id="rank"></div>
+        <div class="quote" id="quote"></div>
+      </div>
+    </div>
+  </div>
+  <div class="actions">
+    <button id="btn-tap">📱 振るかタップ</button>
+    <button id="btn-share" class="share" disabled>🔗 シェア</button>
+  </div>
+  <div class="note">PCはボタン、スマホは端末を振ってください</div>
+</div>
+<div class="flash" id="flash"></div>
+<script>
+(()=>{
+'use strict';
+const SHARE_URL='https://maxtakaharu34-cmd.github.io/shake-omikuji-jp/';
+const RANKS=[
+{lbl:'大吉',w:8,c:'#ffe066',q:'今日は最高の一日！何やってもうまくいく日です。'},
+{lbl:'中吉',w:18,c:'#ff9aa9',q:'良いことが起きる予感。チャレンジしてみよう。'},
+{lbl:'小吉',w:25,c:'#a3e635',q:'平和な一日。穏やかに過ごせます。'},
+{lbl:'吉',w:25,c:'#88ccff',q:'運気は普通。地に足をつけて。'},
+{lbl:'末吉',w:14,c:'#a874e0',q:'徐々に良くなる兆し。気長に待つこと。'},
+{lbl:'凶',w:8,c:'#666',q:'危険な雰囲気。早寝が吉。'},
+{lbl:'大凶',w:2,c:'#222',q:'激ヤバ。何もせずベッドへ。'}
+];
+const $=(id)=>document.getElementById(id);
+const box=$('box'),icon=$('icon'),hint=$('hint'),result=$('result'),rankEl=$('rank'),quoteEl=$('quote');
+const flash=$('flash');
+let drawing=false,lastResult=null;
+let ac=null;
+const en=()=>{if(!ac)ac=new(window.AudioContext||window.webkitAudioContext)();if(ac.state==='suspended')ac.resume();return ac};
+const beep=(f,d,t='triangle',g=.15)=>{const a=en();const o=a.createOscillator();const gn=a.createGain();o.type=t;o.frequency.value=f;gn.gain.value=g;gn.gain.exponentialRampToValueAtTime(.0001,a.currentTime+d);o.connect(gn).connect(a.destination);o.start();o.stop(a.currentTime+d)};
+const drumroll=()=>{[110,130,110,130,110,130,110,130,110,130].forEach((f,i)=>setTimeout(()=>beep(f,.04,'sawtooth',.12),i*60))};
+const fanfare=()=>{[523,659,784,1047,1318].forEach((f,i)=>setTimeout(()=>beep(f,.16,'triangle',.18),i*90))};
+const sad=()=>{[440,330,220,165].forEach((f,i)=>setTimeout(()=>beep(f,.22,'sawtooth',.18),i*120))};
+
+function pickRank(){const total=RANKS.reduce((s,r)=>s+r.w,0);let r=Math.random()*total;for(const x of RANKS){r-=x.w;if(r<0)return x}return RANKS[0]}
+function draw(){
+  if(drawing)return;
+  en();
+  drawing=true;
+  result.classList.remove('show');
+  icon.style.display='';hint.style.display='';
+  box.classList.add('shaking');
+  drumroll();
+  setTimeout(()=>{
+    box.classList.remove('shaking');
+    const r=pickRank();lastResult=r;
+    icon.style.display='none';hint.style.display='none';
+    rankEl.textContent=r.lbl;rankEl.style.color=r.c;
+    quoteEl.textContent=r.q;
+    result.classList.add('show');
+    if(['大吉','中吉','小吉'].includes(r.lbl)){fanfare();flash.classList.add('fire');setTimeout(()=>flash.classList.remove('fire'),200)}
+    else if(['凶','大凶'].includes(r.lbl))sad();
+    else beep(660,.18,'square',.16);
+    $('btn-share').disabled=false;
+    drawing=false;
+  },1100);
+}
+
+// Shake detection
+let lastShake=0;
+window.addEventListener('devicemotion',(e)=>{
+  const a=e.accelerationIncludingGravity;
+  if(!a)return;
+  const m=Math.hypot(a.x||0,a.y||0,a.z||0);
+  if(m>22 && Date.now()-lastShake>1500){
+    lastShake=Date.now();
+    draw();
+  }
+});
+$('btn-tap').addEventListener('click',()=>{
+  // iOS 13+ requires permission
+  if(typeof DeviceMotionEvent!=='undefined' && typeof DeviceMotionEvent.requestPermission==='function'){
+    DeviceMotionEvent.requestPermission().catch(()=>{});
+  }
+  draw();
+});
+box.addEventListener('click',draw);
+$('btn-share').addEventListener('click',()=>{
+  if(!lastResult)return;
+  const txt=`シェイクで運勢「${lastResult.lbl}」が出た！${lastResult.q} #シェイクおみくじ`;
+  const url=`https://x.com/intent/post?text=${encodeURIComponent(txt)}&url=${encodeURIComponent(SHARE_URL)}`;
+  window.open(url,'_blank','noopener,noreferrer');
+});
+})();
+</script>
+</body>
+</html>
